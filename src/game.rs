@@ -26,7 +26,9 @@ pub struct Game {
     game_size: [u32; 2],
     snake: Snake,
     last_move_instant: Instant,
+    cherry_pickup: Pickup,
     score: u32,
+    state: GameState,
 }
 
 fn draw_border(
@@ -56,21 +58,26 @@ fn draw_border(
 
 impl Game {
     pub fn new(scale: u32, game_size: [u32; 2]) -> Self {
+        let [width, height] = game_size;
+        let snake = Snake::new(6, 3);
+        let cherry_pickup = Pickup::new_cherry(width - 1, height - 1, &snake.get_occupied_cells())
+            .expect("Couldn't generate the first cherry");
+
         Game {
             sprites: SpriteData::new(scale as u32),
             scale,
             game_size,
-            snake: Snake::new(6, 3),
+            snake,
+            cherry_pickup,
             last_move_instant: Instant::now(),
             score: 0,
+            state: GameState::Playing,
         }
     }
 
     pub fn move_snake(&mut self) {}
 
     pub fn render(&mut self, gl: &mut GlGraphics, args: &RenderArgs) {
-        use colors::{BLACK, CYAN, WHITE};
-
         let viewport = args.viewport();
         let [width, height] = self.game_size;
         let scale = self.scale;
@@ -79,16 +86,19 @@ impl Game {
         let brick_texture = &all_textures.brick;
 
         gl.draw(viewport, |c, gl| {
-            clear(BLACK, gl);
+            clear(colors::BLACK, gl);
 
             draw_border(gl, &c, width, height, scale, brick_texture);
 
-            self.snake
-                .render(gl, &c, args, all_textures, scale as u32 * 8);
+            self.snake.render(gl, &c, all_textures, scale as u32 * 8);
+
+            self.cherry_pickup
+                .render(gl, &c, all_textures, scale as u32 * 8);
         });
     }
 
     pub fn update(&mut self, _args: &UpdateArgs) {
+        // move the snake
         if self.last_move_instant.elapsed() >= FRAME_DURATION {
             self.last_move_instant = Instant::now();
             let [max_x, max_y] = self.game_size;
@@ -100,6 +110,8 @@ impl Game {
                 }
             }
         }
+
+        // handle the pickup
     }
 
     pub fn handle_key_press(&mut self, key: &Key) {

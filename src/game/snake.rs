@@ -66,7 +66,6 @@ impl Snake {
         &self,
         gl: &mut GlGraphics,
         context: &Context,
-        _args: &RenderArgs,
         sprites: &SpriteData,
         sprite_size: u32,
     ) {
@@ -92,6 +91,10 @@ impl Snake {
 
     pub fn direction(&self) -> Direction {
         self.direction
+    }
+
+    pub fn get_occupied_cells(&self) -> Vec<(u32, u32)> {
+        self.body.iter().map(|([x, y], _, _)| (*x, *y)).collect()
     }
 
     /// Moves the snake one cell in selected direction.
