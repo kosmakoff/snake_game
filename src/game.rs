@@ -104,16 +104,16 @@ impl Game {
 
     pub fn handle_key_press(&mut self, key: &Key) {
         match key {
-            Key::Left if self.snake.direction() != Direction::Right => {
+            Key::Left | Key::A if self.snake.direction() != Direction::Right => {
                 self.snake.set_next_direction(Direction::Left)
             }
-            Key::Right if self.snake.direction() != Direction::Left => {
+            Key::Right | Key::D if self.snake.direction() != Direction::Left => {
                 self.snake.set_next_direction(Direction::Right)
             }
-            Key::Up if self.snake.direction() != Direction::Down => {
+            Key::Up | Key::W if self.snake.direction() != Direction::Down => {
                 self.snake.set_next_direction(Direction::Up)
             }
-            Key::Down if self.snake.direction() != Direction::Up => {
+            Key::Down | Key::S if self.snake.direction() != Direction::Up => {
                 self.snake.set_next_direction(Direction::Down)
             }
             _ => (),
