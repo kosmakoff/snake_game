@@ -68,6 +68,13 @@ impl Pickup {
         find_non_occupied_cell(max_x, max_y, occupied_cells).map(|(x, y)| Pickup::Apple(x, y))
     }
 
+    pub fn position(&self) -> (u32, u32) {
+        match self {
+            Pickup::Cherry(x, y) => (*x, *y),
+            Pickup::Apple(x, y) => (*x, *y),
+        }
+    }
+
     pub fn render(
         &self,
         gl: &mut GlGraphics,

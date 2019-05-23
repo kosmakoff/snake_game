@@ -1,3 +1,4 @@
+use crate::game::pickup::Pickup;
 use crate::game::snake_sprite::SpriteData;
 use graphics::{Context, Image, Transformed};
 use opengl_graphics::{GlGraphics, Texture};
@@ -24,6 +25,11 @@ pub struct Snake {
     body: LinkedList<BodyElement>,
     direction: Direction,
     next_direction: Direction,
+}
+
+pub enum NewCell {
+    Empty,
+    Pickup,
 }
 
 pub enum Collision {
@@ -103,7 +109,12 @@ impl Snake {
     ///
     /// * `max_x` - Maximum value for X coordinate, the boundary of level.
     /// * `max_y` - Maximum value for Y coordinate, the boundary of level.
-    pub fn advance(&mut self, max_x: u32, max_y: u32) -> Result<(), Collision> {
+    pub fn advance(
+        &mut self,
+        max_x: u32,
+        max_y: u32,
+        cherry_pickup: &Pickup,
+    ) -> Result<NewCell, Collision> {
         let ([head_x, head_y], _, _) = self.body.front().expect("Body is empty.");
         let (new_head_x, new_head_y) = match self.next_direction {
             Direction::Left => (*head_x as i32 - 1, *head_y as i32),
@@ -121,18 +132,22 @@ impl Snake {
             return Err(Collision::Border);
         }
 
+        let new_head_x = new_head_x as u32;
+        let new_head_y = new_head_y as u32;
+
         // check for own_body
         if self
             .body
             .iter()
             .rev()
             .skip(1)
-            .any(|([part_x, part_y], _, _)| {
-                *part_x as i32 == new_head_x && *part_y as i32 == new_head_y
-            })
+            .any(|([part_x, part_y], _, _)| *part_x == new_head_x && *part_y == new_head_y)
         {
             return Err(Collision::Body);
         }
+
+        let (cherry_x, cherry_y) = cherry_pickup.position();
+        let picked_cherry = cherry_x == new_head_x && cherry_y == new_head_y;
 
         self.direction = self.next_direction;
 
@@ -147,36 +162,37 @@ impl Snake {
             self.direction,
         ));
 
-        // remove tail
-        self.body.pop_back();
+        if !picked_cherry {
+            // remove tail
+            self.body.pop_back();
 
-        // change new back kind
+            // change new back kind
+            let ([pre_tail_x, pre_tail_y], _, _) =
+                self.body.iter().rev().nth(1).expect("Body is too short.");
 
-        let ([pre_tail_x, pre_tail_y], _, _) =
-            self.body.iter().rev().nth(1).expect("Body is too short.");
+            let (pre_tail_x, pre_tail_y) = (*pre_tail_x, *pre_tail_y);
 
-        let (pre_tail_x, pre_tail_y) = (*pre_tail_x, *pre_tail_y);
+            let ([tail_x, tail_y], tail_part_kind, tail_part_direction) =
+                self.body.back_mut().expect("Body is empty.");
+            *tail_part_kind = BodyPartKind::Tail;
 
-        let ([tail_x, tail_y], tail_part_kind, tail_part_direction) =
-            self.body.back_mut().expect("Body is empty.");
-        *tail_part_kind = BodyPartKind::Tail;
+            *tail_part_direction = match (
+                *tail_x as i32 - pre_tail_x as i32,
+                *tail_y as i32 - pre_tail_y as i32,
+            ) {
+                (1, _) => Direction::Left,
+                (-1, _) => Direction::Right,
+                (_, 1) => Direction::Up,
+                (_, -1) => Direction::Down,
+                _ => *tail_part_direction,
+            };
+        }
 
-        *tail_part_direction = match (
-            *tail_x as i32 - pre_tail_x as i32,
-            *tail_y as i32 - pre_tail_y as i32,
-        ) {
-            (1, _) => Direction::Left,
-            (-1, _) => Direction::Right,
-            (_, 1) => Direction::Up,
-            (_, -1) => Direction::Down,
-            _ => *tail_part_direction,
-        };
-
-        Ok(())
+        match picked_cherry {
+            true => Ok(NewCell::Pickup),
+            false => Ok(NewCell::Empty),
+        }
     }
-
-    /// Grows the snake in selected direction.
-    pub fn grow(&mut self) {}
 
     pub fn set_next_direction(&mut self, direction: Direction) {
         self.next_direction = direction;

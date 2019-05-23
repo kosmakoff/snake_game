@@ -6,11 +6,11 @@ mod snake_sprite;
 use std::time::{Duration, Instant};
 
 use graphics::*;
-use opengl_graphics::{GlGraphics, OpenGL, Texture};
+use opengl_graphics::{GlGraphics, Texture};
 use piston::input::{Key, RenderArgs, UpdateArgs};
 
 use pickup::Pickup;
-use snake::{Direction, Snake};
+use snake::{Direction, NewCell, Snake};
 use snake_sprite::SpriteData;
 
 const FRAME_DURATION: Duration = Duration::from_millis(300);
@@ -60,7 +60,7 @@ impl Game {
     pub fn new(scale: u32, game_size: [u32; 2]) -> Self {
         let [width, height] = game_size;
         let snake = Snake::new(6, 3);
-        let cherry_pickup = Pickup::new_cherry(width - 1, height - 1, &snake.get_occupied_cells())
+        let cherry_pickup = Pickup::new_cherry(width - 3, height - 3, &snake.get_occupied_cells())
             .expect("Couldn't generate the first cherry");
 
         Game {
@@ -98,12 +98,29 @@ impl Game {
     }
 
     pub fn update(&mut self, _args: &UpdateArgs) {
-        // move the snake
+        // move or grow the snake
         if self.last_move_instant.elapsed() >= FRAME_DURATION {
             self.last_move_instant = Instant::now();
             let [max_x, max_y] = self.game_size;
-            match self.snake.advance(max_x - 3, max_y - 3) {
-                Ok(_) => (), // we are good
+            match self
+                .snake
+                .advance(max_x - 3, max_y - 3, &self.cherry_pickup)
+            {
+                Ok(cell) => match cell {
+                    NewCell::Pickup => {
+                        // recreate the pickup
+                        let [width, height] = self.game_size;
+                        self.cherry_pickup = Pickup::new_cherry(
+                            width - 3,
+                            height - 3,
+                            &self.snake.get_occupied_cells(),
+                        )
+                        .expect("Couldn't generate the first cherry");
+                    }
+                    NewCell::Empty => {
+                        // do nothing
+                    }
+                }, // we are good
                 Err(_) => {
                     // we don't care yet about the collision matter
                     println!("We hit something!!!!!")
