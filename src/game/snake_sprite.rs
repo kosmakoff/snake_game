@@ -1,5 +1,5 @@
 use image::imageops::FilterType;
-use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer};
+use image::{DynamicImage, GenericImageView};
 use opengl_graphics::{Texture, TextureSettings};
 
 pub struct SpriteData {
