@@ -3,6 +3,7 @@ mod pickup;
 mod snake;
 mod snake_sprite;
 
+use crate::sprite_renderer::{GenericContext, SpriteRenderer, SpriteRenderingContext};
 use std::time::{Duration, Instant};
 
 use graphics::*;
@@ -31,17 +32,12 @@ pub struct Game {
     state: GameState,
 }
 
-fn draw_border(
-    gl: &mut GlGraphics,
-    context: &Context,
-    width: u32,
-    height: u32,
-    scale: u32,
-    texture: &Texture,
-) {
+fn draw_border(context: &mut SpriteRenderingContext, width: u32, height: u32, texture: &Texture) {
     // draw the outer rectangle
-    let image = Image::new();
     for i in 0..width {
+        let (width, height) = context.size();
+        context.draw_sprite((0, i), texture);
+
         let transform = context.transform.trans_pos([(i * scale * 8) as f64, 0.0]);
         image.draw(texture, &context.draw_state, transform, gl);
         let transform = transform.trans_pos([0.0, ((height - 1) * scale * 8) as f64]);
@@ -77,7 +73,7 @@ impl Game {
 
     pub fn move_snake(&mut self) {}
 
-    pub fn render(&mut self, gl: &mut GlGraphics, args: &RenderArgs) {
+    pub fn render(&mut self, sprite_renderer: &mut SpriteRenderer, args: &RenderArgs) {
         let viewport = args.viewport();
         let [width, height] = self.game_size;
         let scale = self.scale;
@@ -85,10 +81,10 @@ impl Game {
         let all_textures = &self.sprites;
         let brick_texture = &all_textures.brick;
 
-        gl.draw(viewport, |c, gl| {
-            clear(colors::BLACK, gl);
+        sprite_renderer.draw(viewport, |context| {
+            context.clear(colors::BLACK);
 
-            draw_border(gl, &c, width, height, scale, brick_texture);
+            draw_border(&mut context, width, height, brick_texture);
 
             self.snake.render(gl, &c, all_textures, scale as u32 * 8);
 
