@@ -1,46 +1,69 @@
-use std::ops::DerefMut;
+use crate::point::Point;
+use crate::size::Size;
 use graphics::{Context, Image, Transformed, Viewport};
 use opengl_graphics::{GlGraphics, OpenGL, Texture};
+use std::ops::DerefMut;
 
 pub trait GenericContext {
-    type Context: GenericContext;
+    type InnerContext: GenericContext;
 
-    fn inner_mut(&mut self) -> &mut Self::Context;
+    fn inner_mut(&mut self) -> &mut Self::InnerContext;
 
-    fn size(&self) -> (u32, u32);
+    fn context(&self) -> Context;
+
+    fn settings(&self) -> &SpriteRendererSettings;
+
+    fn graphics(&mut self) -> &mut GlGraphics;
+
+    fn offset(&self) -> Point {
+        (0, 0).into()
+    }
+
+    fn size(&self) -> Size;
 
     fn width(&self) -> u32 {
-        let (w, _) = self.size();
-        w
+        self.size().width
     }
 
     fn height(&self) -> u32 {
-        let (_, h) = self.size();
-        h
+        self.size().height
     }
 
-    fn view_mut(&mut self, x: u32, y: u32, width: u32, height: u32) -> SubSpriteRenderingContext<&mut Self::Context> {
-        SubSpriteRenderingContext::new(self.inner_mut(), x, y, width, height)
+    fn view_mut<P, S>(
+        &mut self,
+        offset: P,
+        size: S,
+    ) -> SubSpriteRenderingContext<&mut Self>
+    where
+        P: Into<Point>,
+        S: Into<Size>,
+        Self: Sized
+    {
+        SubSpriteRenderingContext::new(self, offset, size)
     }
 
-    fn draw_sprite(&mut self, coords: (u32, u32), sprite: &Texture) {
+    fn draw_sprite<P: Into<Point>>(&mut self, coords: P, sprite: &Texture) {
         let image = Image::new();
 
-        let (xcoord, ycoord) = coords;
+        let coords: Point = coords.into();
 
         // get the settings from here somehow
-        // let sprite_size = self.inner_mut().sprite_renderer.settings.sprite_size;
+        let sprite_size = self.settings().sprite_size;
+        let offset = self.offset();
 
-        // let transform = self
-        //     .inner_mut()
-        //     .context
-        //     .transform
-        //     .trans_pos([(sprite_size * xcoord) as f64, (sprite_size * ycoord) as f64]);
+        let context = self.context();
+
+        let transform = context.transform.trans_pos([
+            (sprite_size * (coords.x + offset.x) as u32) as f64,
+            (sprite_size * (coords.y + offset.y) as u32) as f64,
+        ]);
+
+        image.draw(sprite, &context.draw_state, transform, self.graphics());
     }
 }
 
 pub struct SpriteRendererSettings {
-    size: (u32, u32),
+    size: Size,
     sprite_size: u32,
 }
 
@@ -55,16 +78,17 @@ pub struct SpriteRenderingContext<'a> {
 }
 
 pub struct SubSpriteRenderingContext<C> {
-    context: C,
-    x_offset: u32,
-    y_offset: u32,
-    width: u32,
-    height: u32,
+    inner_context: C,
+    offset: Point,
+    size: Size,
 }
 
 impl SpriteRendererSettings {
-    pub fn new(size: (u32, u32), sprite_size: u32) -> Self {
-        SpriteRendererSettings { size, sprite_size }
+    pub fn new<S: Into<Size>>(size: S, sprite_size: u32) -> Self {
+        SpriteRendererSettings {
+            size: size.into(),
+            sprite_size,
+        }
     }
 }
 
@@ -102,46 +126,80 @@ impl<'a> SpriteRenderingContext<'a> {
 }
 
 impl<'a> GenericContext for SpriteRenderingContext<'a> {
-    type Context = Self;
+    type InnerContext = SpriteRenderingContext<'a>;
 
-    fn inner_mut(&mut self) -> &mut Self::Context {
+    fn inner_mut(&mut self) -> &mut Self::InnerContext {
         self
     }
 
-    fn size(&self) -> (u32, u32) {
+    fn context(&self) -> Context {
+        self.context
+    }
+
+    fn settings(&self) -> &SpriteRendererSettings {
+        &self.sprite_renderer.settings
+    }
+
+    fn graphics(&mut self) -> &mut GlGraphics {
+        &mut self.sprite_renderer.gl
+    }
+
+    fn size(&self) -> Size {
         self.sprite_renderer.settings.size
     }
 }
 
-impl<C> SubSpriteRenderingContext<C> {
-    pub fn new(
-        context: C,
-        x_offset: u32,
-        y_offset: u32,
-        width: u32,
-        height: u32,
-    ) -> Self {
+impl<C> SubSpriteRenderingContext<C>
+where
+    C: DerefMut,
+    C::Target: GenericContext + Sized,
+{
+    pub fn new<P, S>(inner_context: C, offset: P, size: S) -> Self
+    where
+        P: Into<Point>,
+        S: Into<Size>,
+    {
+        let offset: Point = offset.into();
+        let size: Size = size.into();
+
+        let inner_offset = inner_context.offset();
+
         SubSpriteRenderingContext {
-            context,
-            x_offset,
-            y_offset,
-            width,
-            height,
+            inner_context,
+            offset: inner_offset.offset(offset),
+            size: size,
         }
     }
 }
 
 impl<C> GenericContext for SubSpriteRenderingContext<C>
-where C: DerefMut,
-C::Target: GenericContext + Sized,
- {
-    type Context = C::Target;
-    
-    fn inner_mut(&mut self) -> &mut Self::Context {
-        &mut self.context
+where
+    C: DerefMut,
+    C::Target: GenericContext + Sized,
+{
+    type InnerContext = C::Target;
+
+    fn inner_mut(&mut self) -> &mut Self::InnerContext {
+        &mut self.inner_context
     }
 
-    fn size(&self) -> (u32, u32) {
-        (self.width, self.height)
+    fn context(&self) -> Context {
+        self.inner_context.context()
+    }
+
+    fn settings(&self) -> &SpriteRendererSettings {
+        self.inner_context.settings()
+    }
+
+    fn graphics(&mut self) -> &mut GlGraphics {
+        self.inner_mut().graphics()
+    }
+
+    fn size(&self) -> Size {
+        self.size
+    }
+
+    fn offset(&self) -> Point {
+        self.offset
     }
 }

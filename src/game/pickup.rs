@@ -1,6 +1,8 @@
 use crate::game::snake_sprite::SpriteData;
-use graphics::{Context, Image, Transformed};
-use opengl_graphics::{GlGraphics, Texture};
+use crate::point::Point;
+use crate::size::Size;
+use crate::sprite_renderer::GenericContext;
+
 use rand::{thread_rng, Rng};
 use std::collections::HashSet;
 
@@ -8,12 +10,14 @@ fn get_hashcode(x: u32, y: u32) -> u32 {
     (17 * 31 + x) * 31 + y
 }
 
-fn find_non_occupied_cell(
-    max_x: u32,
-    max_y: u32,
-    occupied_cells: &[(u32, u32)],
-) -> Option<(u32, u32)> {
-    let space_size = (max_x + 1) * (max_y + 1);
+fn find_non_occupied_cell<'a, S, P>(field_size: S, occupied_cells: &'a [P]) -> Option<Point>
+where
+    S: Into<Size>,
+    P: Into<Point>,
+    &'a P: Into<Point>,
+{
+    let field_size: Size = field_size.into();
+    let space_size = field_size.width * field_size.height;
     let rand_range = space_size - occupied_cells.len() as u32;
 
     if rand_range <= 0 {
@@ -22,7 +26,10 @@ fn find_non_occupied_cell(
 
     let occupied_cells_hashset: HashSet<u32> = occupied_cells
         .iter()
-        .map(|(x, y)| get_hashcode(*x, *y))
+        .map(|point| {
+            let point: Point = point.into();
+            get_hashcode(point.x as u32, point.y as u32)
+        })
         .collect();
 
     let mut rng = thread_rng();
@@ -33,8 +40,8 @@ fn find_non_occupied_cell(
     for i in 0..=empty_cell_index {
         // loop until we find the empty cell and increase the
         loop {
-            let target_cell_y = target_cell_index / (max_x + 1);
-            let target_cell_x = target_cell_index % (max_x + 1);
+            let target_cell_y = target_cell_index / field_size.width;
+            let target_cell_x = target_cell_index % field_size.width;
             let target_cell_hashcode = get_hashcode(target_cell_x, target_cell_y);
             if !occupied_cells_hashset.contains(&target_cell_hashcode) {
                 break;
@@ -43,9 +50,9 @@ fn find_non_occupied_cell(
         }
 
         if i == empty_cell_index {
-            let target_cell_y = target_cell_index / (max_x + 1);
-            let target_cell_x = target_cell_index % (max_x + 1);
-            return Some((target_cell_x, target_cell_y));
+            let target_cell_y = target_cell_index / field_size.width;
+            let target_cell_x = target_cell_index % field_size.width;
+            return Some((target_cell_x as i32, target_cell_y as i32).into());
         }
 
         target_cell_index += 1;
@@ -54,64 +61,76 @@ fn find_non_occupied_cell(
     None
 }
 
-pub enum Pickup {
-    Cherry(u32, u32),
-    Apple(u32, u32),
+pub enum PickupKind {
+    Cherry,
+    Apple,
+}
+
+pub struct Pickup {
+    pub pickup_kind: PickupKind,
+    pub position: Point,
 }
 
 impl Pickup {
-    pub fn new_cherry(max_x: u32, max_y: u32, occupied_cells: &[(u32, u32)]) -> Option<Self> {
-        find_non_occupied_cell(max_x, max_y, occupied_cells).map(|(x, y)| Pickup::Cherry(x, y))
+    pub fn new_cherry<'a, S, P>(
+        field_size: S,
+        occupied_cells: &'a [P],
+    ) -> Option<Self>
+    where
+        S: Into<Size>,
+        P: Into<Point>,
+        &'a P: Into<Point>
+    {
+        find_non_occupied_cell(field_size, occupied_cells).map(|position| Pickup {
+            pickup_kind: PickupKind::Cherry,
+            position,
+        })
     }
 
-    pub fn new_apple(max_x: u32, max_y: u32, occupied_cells: &[(u32, u32)]) -> Option<Self> {
-        find_non_occupied_cell(max_x, max_y, occupied_cells).map(|(x, y)| Pickup::Apple(x, y))
+    pub fn new_apple<'a, S, P>(
+        field_size: S,
+        occupied_cells: &'a [P],
+    ) -> Option<Self>
+    where
+        S: Into<Size>,
+        P: Into<Point>,
+        &'a P: Into<Point>,
+    {
+        find_non_occupied_cell(field_size, occupied_cells).map(|position| Pickup {
+            pickup_kind: PickupKind::Apple,
+            position,
+        })
     }
 
-    pub fn position(&self) -> (u32, u32) {
-        match self {
-            Pickup::Cherry(x, y) => (*x, *y),
-            Pickup::Apple(x, y) => (*x, *y),
-        }
-    }
-
-    pub fn render(
-        &self,
-        gl: &mut GlGraphics,
-        context: &Context,
-        all_sprites: &SpriteData,
-        sprite_size: u32,
-    ) {
-        let (texture, x, y) = match &self {
-            Pickup::Cherry(x, y) => (&all_sprites.cherry, x, y),
-            Pickup::Apple(x, y) => (&all_sprites.apple, x, y),
+    pub fn render<C>(&self, context: &mut C, all_sprites: &SpriteData)
+    where
+        C: GenericContext,
+    {
+        let texture = match &self.pickup_kind {
+            PickupKind::Cherry => &all_sprites.cherry,
+            PickupKind::Apple => &all_sprites.apple,
         };
 
-        let image = Image::new();
-
-        // offset one cell for border
-        let transform = context
-            .transform
-            .trans_pos([sprite_size as f64, sprite_size as f64]);
-
-        let transform = transform.trans_pos([(*x * sprite_size) as f64, (*y * sprite_size) as f64]);
-
-        image.draw(texture, &context.draw_state, transform, gl);
+        context.draw_sprite((self.position.x, self.position.y), texture);
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
     #[test]
     fn test_find_non_occupied_cell() {
-        let cells: Vec<(u32, u32)> = vec![(0, 0), (1, 0), (1, 1)];
-        assert_eq!(find_non_occupied_cell(1, 1, &cells), Some((0, 1)));
+        let cells: Vec<(i32, i32)> = vec![(0, 0), (1, 0), (1, 1)];
+        assert_eq!(
+            find_non_occupied_cell((2, 2), &cells),
+            Some((0_i32, 1_i32).into())
+        );
 
-        let cells: Vec<(u32, u32)> = vec![(0, 0), (1, 0), (0, 1)];
-        assert_eq!(find_non_occupied_cell(1, 1, &cells), Some((1, 1)));
+        let cells: Vec<(i32, i32)> = vec![(0, 0), (1, 0), (0, 1)];
+        assert_eq!(find_non_occupied_cell((2, 2), &cells), Some((1, 1).into()));
 
-        let cells: Vec<(u32, u32)> = vec![(0, 0), (1, 0), (0, 1), (1, 1)];
-        assert_eq!(find_non_occupied_cell(1, 1, &cells), None);
+        let cells: Vec<(i32, i32)> = vec![(0, 0), (1, 0), (0, 1), (1, 1)];
+        assert_eq!(find_non_occupied_cell((2, 2), &cells), None);
     }
 }

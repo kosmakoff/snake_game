@@ -11,3 +11,7 @@ pistoncore-glutin_window = "0.54.0"
 piston2d-opengl_graphics = "0.59.0"
 image = "0.21.1"
 rand = "0.6"
+
+[[bin]]
+name = "snake_game"
+path = "src/main.rs"

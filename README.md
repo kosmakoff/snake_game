@@ -15,6 +15,6 @@ Thanks to Cosme @ itch.io for the [assets](https://cosme.itch.io/snake).
 - [x] Draw the snake
 - [x] Control the snake
 - [x] Generate pickups and consume them
-- [ ] Draw the score
-- [ ] Implement the game-over screen
+- [x] Draw the score
+- [x] Implement the game-over screen
 - [ ] Implement the high scores list (maybe)

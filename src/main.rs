@@ -4,17 +4,19 @@ extern crate image;
 extern crate opengl_graphics;
 extern crate piston;
 
+#[macro_use]
+mod conv_macros;
 mod game;
+mod point;
+mod size;
 mod sprite_renderer;
 
 use glutin_window::GlutinWindow as Window;
-use opengl_graphics::{GlGraphics, OpenGL};
+use opengl_graphics::OpenGL;
 use piston::event_loop::*;
-use piston::input::*;
 use piston::window::WindowSettings;
 
-use game::Game;
-use sprite_renderer::*;
+use game::{Game, GameSettings};
 
 const GAME_WIDTH: u32 = 24;
 const GAME_HEIGHT: u32 = 16;
@@ -40,27 +42,11 @@ fn main() {
 
     let opengl = OpenGL::V2_1;
 
-    let mut game = Game::new(SPRITE_SCALE, [GAME_WIDTH, GAME_HEIGHT]);
-
-    let mut sprite_renderer = SpriteRenderer::new(
-        opengl,
-        SpriteRendererSettings::new((GAME_WIDTH, GAME_HEIGHT), SPRITE_SIZE * SPRITE_SCALE),
-    );
+    let settings = GameSettings::new(opengl, SPRITE_SIZE, SPRITE_SCALE, (GAME_WIDTH, GAME_HEIGHT));
+    let mut game = Game::new(settings);
 
     let mut events = Events::new(EventSettings::new());
     while let Some(event) = events.next(&mut window) {
-        game.move_snake();
-
-        if let Some(render_args) = event.render_args() {
-            game.render(&mut sprite_renderer, &render_args);
-        }
-
-        if let Some(update_args) = event.update_args() {
-            game.update(&update_args);
-        }
-
-        if let Some(Button::Keyboard(key)) = event.press_args() {
-            game.handle_key_press(&key);
-        }
+        game.handle_event(&event);
     }
 }

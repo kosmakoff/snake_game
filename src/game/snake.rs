@@ -1,8 +1,9 @@
 use crate::game::pickup::Pickup;
 use crate::game::snake_sprite::SpriteData;
-use graphics::{Context, Image, Transformed};
-use opengl_graphics::{GlGraphics, Texture};
-use piston::input::RenderArgs;
+use crate::point::Point;
+use crate::size::Size;
+use crate::sprite_renderer::GenericContext;
+use opengl_graphics::Texture;
 use std::collections::LinkedList;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -19,12 +20,13 @@ enum BodyPartKind {
     Tail,
 }
 
-type BodyElement = ([u32; 2], BodyPartKind, Direction);
+type BodyElement = (Point, BodyPartKind, Direction);
 
 pub struct Snake {
     body: LinkedList<BodyElement>,
     direction: Direction,
     next_direction: Direction,
+    field_size: Size,
 }
 
 pub enum NewCell {
@@ -53,45 +55,46 @@ fn get_rotated_texture_variant<'a>(
 }
 
 impl Snake {
-    pub fn new(x: u32, y: u32) -> Self {
+    pub fn new<P: Into<Point>, S: Into<Size>>(head_start: P, length: u32, field_size: S) -> Self {
+        let head_start: Point = head_start.into();
+
         let mut body = LinkedList::new();
-        body.push_back(([x, y], BodyPartKind::Head, Direction::Right));
-        body.push_back(([x - 1, y], BodyPartKind::Middle, Direction::Right));
-        body.push_back(([x - 2, y], BodyPartKind::Middle, Direction::Right));
-        body.push_back(([x - 3, y], BodyPartKind::Middle, Direction::Right));
-        body.push_back(([x - 4, y], BodyPartKind::Tail, Direction::Right));
+        body.push_back((head_start, BodyPartKind::Head, Direction::Right));
+
+        for i in 1..length - 1 {
+            body.push_back((
+                head_start.offset((-(i as i32), 0)),
+                BodyPartKind::Middle,
+                Direction::Right,
+            ));
+        }
+
+        body.push_back((
+            head_start.offset((1 - length as i32, 0)),
+            BodyPartKind::Tail,
+            Direction::Right,
+        ));
 
         Snake {
             direction: Direction::Right,
             next_direction: Direction::Right,
             body,
+            field_size: field_size.into(),
         }
     }
 
-    pub fn render(
-        &self,
-        gl: &mut GlGraphics,
-        context: &Context,
-        sprites: &SpriteData,
-        sprite_size: u32,
-    ) {
-        let image = Image::new();
-
-        // offset one cell for border
-        let transform = context
-            .transform
-            .trans_pos([sprite_size as f64, sprite_size as f64]);
-
-        for ([x, y], kind, rotation) in &self.body {
-            let transform =
-                transform.trans_pos([(x * sprite_size) as f64, (y * sprite_size) as f64]);
-
+    pub fn render<C>(&self, context: &mut C, sprites: &SpriteData)
+    where
+        C: GenericContext,
+    {
+        for (point, kind, rotation) in &self.body {
             let texture = match kind {
                 BodyPartKind::Head => get_rotated_texture_variant(&sprites.snake_head, rotation),
                 BodyPartKind::Middle => get_rotated_texture_variant(&sprites.snake_body, rotation),
                 BodyPartKind::Tail => get_rotated_texture_variant(&sprites.snake_tail, rotation),
             };
-            image.draw(texture, &context.draw_state, transform, gl);
+
+            context.draw_sprite(*point, texture);
         }
     }
 
@@ -99,8 +102,8 @@ impl Snake {
         self.direction
     }
 
-    pub fn get_occupied_cells(&self) -> Vec<(u32, u32)> {
-        self.body.iter().map(|([x, y], _, _)| (*x, *y)).collect()
+    pub fn get_occupied_cells(&self) -> Vec<Point> {
+        self.body.iter().map(|(point, _, _)| *point).collect()
     }
 
     /// Moves the snake one cell in selected direction.
@@ -109,31 +112,23 @@ impl Snake {
     ///
     /// * `max_x` - Maximum value for X coordinate, the boundary of level.
     /// * `max_y` - Maximum value for Y coordinate, the boundary of level.
-    pub fn advance(
-        &mut self,
-        max_x: u32,
-        max_y: u32,
-        cherry_pickup: &Pickup,
-    ) -> Result<NewCell, Collision> {
-        let ([head_x, head_y], _, _) = self.body.front().expect("Body is empty.");
-        let (new_head_x, new_head_y) = match self.next_direction {
-            Direction::Left => (*head_x as i32 - 1, *head_y as i32),
-            Direction::Right => (*head_x as i32 + 1, *head_y as i32),
-            Direction::Up => (*head_x as i32, *head_y as i32 - 1),
-            Direction::Down => (*head_x as i32, *head_y as i32 + 1),
+    pub fn advance(&mut self, cherry_pickup: &Pickup) -> Result<NewCell, Collision> {
+        let (head_position, _, _) = self.body.front().expect("Body is empty.");
+        let new_head_position = match self.next_direction {
+            Direction::Left => head_position.offset((-1, 0)),
+            Direction::Right => head_position.offset((1, 0)),
+            Direction::Up => head_position.offset((0, -1)),
+            Direction::Down => head_position.offset((0, 1)),
         };
 
         // check for borders first
-        if new_head_x < 0
-            || new_head_x > max_x as i32
-            || new_head_y < 0
-            || new_head_y > max_y as i32
+        if new_head_position.x < 0
+            || new_head_position.x >= self.field_size.width as i32
+            || new_head_position.y < 0
+            || new_head_position.y >= self.field_size.height as i32
         {
             return Err(Collision::Border);
         }
-
-        let new_head_x = new_head_x as u32;
-        let new_head_y = new_head_y as u32;
 
         // check for own_body
         if self
@@ -141,13 +136,12 @@ impl Snake {
             .iter()
             .rev()
             .skip(1)
-            .any(|([part_x, part_y], _, _)| *part_x == new_head_x && *part_y == new_head_y)
+            .any(|(part_position, _, _)| *part_position == new_head_position)
         {
             return Err(Collision::Body);
         }
 
-        let (cherry_x, cherry_y) = cherry_pickup.position();
-        let picked_cherry = cherry_x == new_head_x && cherry_y == new_head_y;
+        let picked_cherry = cherry_pickup.position == new_head_position;
 
         self.direction = self.next_direction;
 
@@ -156,29 +150,24 @@ impl Snake {
         *body_part_kind = BodyPartKind::Middle;
 
         // attach new head
-        self.body.push_front((
-            [new_head_x as u32, new_head_y as u32],
-            BodyPartKind::Head,
-            self.direction,
-        ));
+        self.body
+            .push_front((new_head_position, BodyPartKind::Head, self.direction));
 
         if !picked_cherry {
             // remove tail
             self.body.pop_back();
 
             // change new back kind
-            let ([pre_tail_x, pre_tail_y], _, _) =
-                self.body.iter().rev().nth(1).expect("Body is too short.");
+            let (previous_tail_position, _, _) =
+                *self.body.iter().rev().nth(1).expect("Body is too short.");
 
-            let (pre_tail_x, pre_tail_y) = (*pre_tail_x, *pre_tail_y);
-
-            let ([tail_x, tail_y], tail_part_kind, tail_part_direction) =
+            let (tail_position, tail_part_kind, tail_part_direction) =
                 self.body.back_mut().expect("Body is empty.");
             *tail_part_kind = BodyPartKind::Tail;
 
             *tail_part_direction = match (
-                *tail_x as i32 - pre_tail_x as i32,
-                *tail_y as i32 - pre_tail_y as i32,
+                tail_position.x - previous_tail_position.x,
+                tail_position.y - previous_tail_position.y,
             ) {
                 (1, _) => Direction::Left,
                 (-1, _) => Direction::Right,
