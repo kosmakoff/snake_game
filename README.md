@@ -4,7 +4,13 @@ Classic game implemented in Rust.
 
 ## Controls
 
-Use WASD or arrow keys to control the snake.
+Use WASD or arrow keys to control the snake. Press `SPACE` when on game over screen to restart.
+
+## Couple of screenshots
+
+![Gameplay](./screenshots/gameplay.png)
+
+![Gameover](./screenshots/gameover.png)
 
 ## Credits
 
