@@ -1,6 +1,6 @@
 # snake_game
 
-Classic game implemented in Rust.
+Classic game implemented in Rust. And this is a test.
 
 ## Controls
 
